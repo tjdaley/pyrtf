@@ -2,7 +2,7 @@
 Create simple RTF documents in Python
 
 ## Purpose
-This module helps the author create RTF (Rich Text Format) documents from a Python program. It has some general purpose characteristics but I wrote this to elp me create legal pleadings in family law cases in Texas, and it shows. (E.g. classes for CaseStyle, SignatureBlock, and CertificateOfService, etc.)
+This module helps the author create RTF (Rich Text Format) documents from a Python program. It has some general purpose characteristics but I wrote this to help me create legal pleadings in family law cases in Texas, and it shows. (E.g. classes for CaseStyle, SignatureBlock, and CertificateOfService, etc.)
 
 ## How To
 The main() function in the Python code shows how to use this module.
