@@ -10,7 +10,7 @@ The main() function in the Python code shows how to use this module.
 ## Who Helped Me
 I leaned heavily on Google and Stackexchange, as always. I also took full advantage of these sites:
 
-* [O'Rielly's Rich Text Tutorial ](https://www.oreilly.com/library/view/rtf-pocket-guide/9781449302047/ch01.html)
+* [O'Reilly's Rich Text Tutorial ](https://www.oreilly.com/library/view/rtf-pocket-guide/9781449302047/ch01.html)
 * [Tony Di Bona's Helpful Tutorial](http://www.pindari.com/)
 
 ## Substantive Research
