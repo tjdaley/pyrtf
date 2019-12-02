@@ -163,6 +163,21 @@ class NewPage(object):
 class TextRun(object):
     UNDERLINE_SINGLE = ''
     UNDERLINE_DOUBLE = 'db'
+
+    # For shortcuts in setting text properties
+    props = (
+        'color',
+        'bold',
+        'italic',
+        'underline',
+        'all_caps',
+        'small_caps',
+        'strike',
+        'outline'
+    )
+    Properties = namedtuple('Properties', props, defaults=(False,) * len(props))  # NOQA
+
+    # For MD-ish syntax to RTF
     Replacement = namedtuple('Replacement', ['old', 'new'])
     replacements = [
         # Bold
@@ -188,16 +203,18 @@ class TextRun(object):
         Replacement(old='[NOTE: ', new='[\\b\\cf2 NOTE\\b0\\cf1 :'),
     ]
 
-    def __init__(self, text: str):
+    def __init__(self, text: str, props: Properties = None):
+        myprops = props or TextRun.Properties()
+
         self.text = self.md2rtf(text)
-        self.color = 0
-        self.bold = False
-        self.italic = False
-        self.underline = False
-        self.all_caps = False
-        self.small_caps = False
-        self.strike_through = False
-        self.outline = False
+        self.color = myprops.color
+        self.bold = myprops.bold
+        self.italic = myprops.italic
+        self.underline = myprops.underline
+        self.all_caps = myprops.all_caps
+        self.small_caps = myprops.small_caps
+        self.strike_through = myprops.strike
+        self.outline = myprops.outline
 
     def md2rtf(self, text: str) -> str:
         """
@@ -213,7 +230,7 @@ class TextRun(object):
         pre = ''
         post = ''
 
-        if self.color != 0:
+        if not isinstance(self.color, bool):
             pre += '\\cf{}'.format(self.color)
             post += '\\cf0'
 
@@ -225,7 +242,7 @@ class TextRun(object):
             pre += '\\i'
             post += '\\i0'
 
-        if self.underline:
+        if isinstance(self.underline, str):
             pre += '\\ul{}'.format(self.underline)
             post += '\\ul0'
 
@@ -247,8 +264,8 @@ class TextRun(object):
 
         # return '{} {}{} '.format(pre, self.text, post)
         if not pre:
-            return '{%s }\n' % self.text
-        return '{%s %s }\n' % (pre, self.text)
+            return '{%s}\n' % self.text
+        return '{%s %s}\n' % (pre, self.text)
 
 
 class Paragraph(object):
@@ -277,18 +294,188 @@ class Paragraph(object):
         keep = ''
         indent = ''
         if self.double_space:
-            spacing = '\\sl480\\slmultl'
+            spacing = '\\sl480\\slmult1'
         if self.is_header:
             # Try not to page break between this and the next paragraph.
             keep = '\\keepn'
         if self.indent_first_line and not self.is_header:
             indent = '\\fi720'  # Indent first line by one-half inch
         return (
-            '{{\\pard\\q{} '.format(self.alignment) +
-            spacing + keep + indent +
+            '{{\\pard{}\\q{} '.format(spacing, self.alignment) +
+            keep + indent +
             ''.join(texts) +
             '\\par}\n'
         )
+
+
+class CaseStyle(object):
+    props = (
+        'cause_number',
+        'county',
+        'court_type',
+        'court_number',
+        'petitioner_name',
+        'respondent_name',
+        'is_divorce',
+        'child_names',
+        'sensitive',
+        'doc_title',
+    )
+    CaseInfo = namedtuple('CaseInfo', props, defaults=(None,) * len(props))
+
+    def __init__(self, caseinfo: CaseInfo):
+        self.cause_number = caseinfo.cause_number
+        self.county = caseinfo.county
+        self.court_type = caseinfo.court_type
+        self.court_number = caseinfo.court_number
+        self.petitioner_name = caseinfo.petitioner_name
+        self.respondent_name = caseinfo.respondent_name
+        self.is_divorce = caseinfo.is_divorce
+        self.sensitive = caseinfo.sensitive
+        self.doc_title = caseinfo.doc_title
+        if isinstance(caseinfo.child_names, str):
+            self.child_names = [caseinfo.child_names]
+        if isinstance(caseinfo.child_names, list):
+            self.child_names = caseinfo.child_names
+
+    def __str__(self):
+        parts = []
+        bold_caps = TextRun.Properties(bold=True, all_caps=True)
+
+        # Sensitive information warning
+        if self.sensitive:
+            paragraph = Paragraph(alignment=Paragraph.ALIGN_LEFT)
+            paragraph.set_header()
+            text = TextRun("This document contains\\nsensitive data", bold_caps)  # NOQA
+            paragraph.add_text(text)
+            parts.append(str(paragraph))
+
+        # Cause Number
+        paragraph = Paragraph(alignment=Paragraph.ALIGN_CENTER)
+        paragraph.set_header()
+        text = TextRun('Cause No. ', bold_caps)
+        paragraph.add_text(text)
+        text = TextRun(
+            self.cause_number,
+            TextRun.Properties(underline=TextRun.UNDERLINE_SINGLE, bold=True)
+        )
+        paragraph.add_text(text)
+        paragraph.add_text(NewLine())
+        parts.append(str(paragraph))
+
+        # Table containing the full case style in this format
+        #
+        # In the matter of           |  In the District Court
+        # The Marriage of            |
+        #                            |  District Court #469
+        # John Doe                   |
+        # and                        |  Collin County, Texas
+        # Jane Doe                   |
+        #                            |
+        # And in the interest of     |
+        # child 1, and child 2,      |
+        # Children                   |
+        #
+        # Not every case style has every element that is in the left column
+        # above.
+        begin_row = '\\trowd\\trgaph180\n'
+        column_widths = '\\cellx4680\\cellx9360\n'
+        left_cell = '{\\pard\\intbl\\brdrr\\brdrs\\brdrw10\\brsp20 %s\\cell}\n'
+        right_cell = '{\\pard\\intbl %s\\cell}\n'
+        end_row = '\\row\n'
+
+        left_content = ""
+        if self.is_divorce:
+            t = TextRun('In the Matter of\\nThe Marriage of\\n\\n', bold_caps)
+            left_content += str(t)
+            t = TextRun(self.petitioner_name, bold_caps)
+            left_content += str(t)
+            t = TextRun('\\nand\\n', bold_caps)
+            left_content += str(t)
+            t = TextRun(self.respondent_name, bold_caps)
+            left_content += str(t)
+            if self.child_names:
+                t = TextRun('\\n\\nand ', bold_caps)
+                left_content += str(t)
+
+        if self.child_names:
+            t = TextRun('In the Interest of\\n', bold_caps)
+            left_content += str(t)
+            if len(self.child_names) == 1:
+                capacity = ', a child'
+            else:
+                capacity = ', minor children'
+            t = TextRun(', '.join(self.child_names), bold_caps)
+            left_content += str(t)
+            t = TextRun(capacity, bold_caps)
+            left_content += str(t)
+
+        # Right column
+        right_content = ""
+        t = TextRun('In the %s Court\\n\\n' % self.court_type, bold_caps)
+        right_content += str(t)
+        t = TextRun('%s Court #%s\\n\\n' % (self.court_type, self.court_number), bold_caps)  # NOQA
+        right_content += str(t)
+        t = TextRun('%s County, Texas' % self.county, bold_caps)
+        right_content += str(t)
+
+        # Build the Table
+        case_style = [begin_row, column_widths]
+        case_style.append(left_cell % left_content)
+        case_style.append(right_cell % right_content)
+        case_style.append(end_row)
+        parts.append(''.join(case_style))
+
+        # Document Title
+        p = Paragraph(alignment=Paragraph.ALIGN_CENTER)
+        p.add_text(NewLine())
+        p.set_header()
+        t = TextRun(self.doc_title, bold_caps)
+        p.add_text(t)
+        p.add_text(NewLine())
+        parts.append(str(p))
+
+        return '{' + ''.join(parts) + '}\n'
+
+
+class SignatureBlock(object):
+    Attorney = namedtuple(
+        'Attorney',
+        [
+            'name',
+            'bar_no',
+            'firm_name',
+            'street',
+            'csz',
+            'telephone',
+            'fax',
+            'email',
+            'role'
+        ]
+    )
+
+    def __init__(self, attorney: Attorney):
+        self.attorney = attorney
+
+    def __str__(self):
+        parts = []
+        line_template = '{\\pard\\ql\\li4680\\keepn %s\\par}\n'
+        underline_template = '{\\pard\\ql\\li4680\\keepn\\brdrt\\brdrs\\brdrw10\\brsp20 %s\\par}\n'  # NOQA
+        blank_line = '{\\pard\\keepn\\par}\n'
+        parts.append(line_template % '\\line Respectfully,\\line')
+        parts.append(line_template % self.attorney.firm_name)
+        parts.append(line_template % self.attorney.street)
+        parts.append(line_template % self.attorney.csz)
+        parts.append(line_template % ("Tel: " + self.attorney.telephone))
+        parts.append(line_template % ("Fax: " + self.attorney.fax))
+        parts.append(blank_line)
+        parts.append(line_template % ("/s/ " + self.attorney.name))
+        parts.append(underline_template % self.attorney.name)
+        parts.append(line_template % ("State Bar No. " + self.attorney.bar_no))
+        parts.append(line_template % self.attorney.email)
+        parts.append(blank_line)
+        parts.append(line_template % self.attorney.role)
+        return ''.join(parts)
 
 
 class CertificateOfService(object):
@@ -307,9 +494,10 @@ class CertificateOfService(object):
         p = Paragraph(alignment=Paragraph.ALIGN_CENTER)
         p.set_header()
         p.double_space = True
-        t = TextRun("Certificate of Service\n")
-        t.bold = True
-        t.all_caps = True
+        t = TextRun(
+            "Certificate of Service\n",
+            TextRun.Properties(bold=True, all_caps=True)
+        )
         p.add_text(t)
         parts.append(str(p))
 
@@ -335,15 +523,14 @@ class CertificateOfService(object):
             t = TextRun("Via {} to {}".format(
                 recipient.method,
                 recipient.address
-            ))
-            t.italic = True
+            ), TextRun.Properties(italic=True))
             p.add_text(t)
             p.add_text(NewLine())
             parts.append(str(p))
 
         signature = (
             '{\\pard\\par} \n' +  # Blank line
-            '{\pard\\ql\\li4680 /s/ %s \\par}' % self.attorney +  # NOQA Electronic signature
+            '{\\pard\\ql\\li4680 /s/ %s \\par}' % self.attorney +  # NOQA Electronic signature
             '{\\pard\\ql\\li4680\\brdrt\\brdrs\\brdrw10\\brsp20 ' +  # NOQA Border for signature
             self.attorney + '\\line ' + self.designation + '\\par}'
         )
@@ -398,56 +585,66 @@ class Document(object):
 
 
 def main():
-    document = Document('Responses to Request for Production', '469-55555-2019', 'IMMO Doe and Doe')  # NOQA
+    # This is the information we need from our database
+    doc_title = "Responses to Requests for Production"
+    cause_number = "469-55555-2019"
+    footer_desc = "IMMO Doe and Doe"
+
+    signing_attorney = SignatureBlock.Attorney(
+        'Thomas J. Daley',
+        '24059643',
+        'Power Daley PLLC',
+        '825 Watters Creek Blvd Ste 395',
+        'Allen, TX 75013',
+        '972-985-4448',
+        '972-985-4449',
+        'admin@powerdaley.com',
+        'Attorney for Respondent'
+    )
+
+    case_info = CaseStyle.CaseInfo(
+        cause_number,
+        'Collin',
+        'District',
+        '469',
+        'John Doe',
+        'Jane Doe',
+        False,
+        ['Johnny Doe', 'Julie Joe'],
+        False,
+        doc_title
+    )
+
+    # Begin building the document
+    document = Document(doc_title, cause_number, footer_desc)
     document.color_table.add_color((255, 0, 0))
 
-    paragraph = Paragraph(alignment=Paragraph.ALIGN_LEFT)
-    text = TextRun('This document contains\\nsensitive data')
-    text.bold = True
-    text.all_caps = True
-    paragraph.add_text(text)
-    paragraph.indent_first_line = False
-    document.add_content(paragraph)
+    # Case Style
+    case_style = CaseStyle(case_info)
+    document.add_content(str(case_style))
 
-    # TODO: Next two sections should go into a CaseStyle object
-    paragraph = Paragraph(alignment=Paragraph.ALIGN_CENTER)
-    paragraph.set_header()
-    text = TextRun('Cause No. ')
-    text.bold = True
-    paragraph.add_text(text)
-    text = TextRun(document.cause_number)
-    text.underline = TextRun.UNDERLINE_SINGLE
-    text.bold = True
-    paragraph.add_text(text)
-    paragraph.add_text(NewLine())
-    document.add_content(paragraph)
-
-    p = Paragraph(alignment=Paragraph.ALIGN_CENTER)
-    paragraph.set_header()
-    t = TextRun(document.title)
-    t.bold = True
-    t.all_caps = True
-    p.add_text(t)
-    p.add_text(NewLine())
-    document.add_content(p)
-
+    # Document Content
+    bold_small = TextRun.Properties(bold=True, small_caps=True)
+    italics = TextRun.Properties(italic=True)
     p = Paragraph(alignment=Paragraph.ALIGN_JUSTIFY)
-    t = TextRun('Ava Paxton Daley')
-    t.small_caps = True
-    t.bold = True
+    t = TextRun('Ava Paxton Daley 'bold_small)
     p.add_text(t)
-    t = TextRun('provides the _accompanying_ __responses__ to Petitioner\'s')
+    t = TextRun('provides the _accompanying_ __responses__ to Petitioner\'s ')
     p.add_text(t)
-    t = TextRun('[[Requests for Production and Inspection]]')
-    t.italic = True
+    t = TextRun('[[Requests for Production and Inspection]] ', italic)
     p.add_text(t)
     t = TextRun('propounded by Petitioner on November 1, 2019.')
     p.add_text(t)
     document.add_content(p)
 
+    # Signature block
+    signature = SignatureBlock(signing_attorney)
+    document.add_content(signature)
+
+    # Certificate of Service
     certificate = CertificateOfService(
-        attorney="Thomas J. Daley",
-        designation="Attorney for Respondent"
+        attorney=signing_attorney.name,
+        designation=signing_attorney.role
     )
     recipient = CertificateOfService.Recipient(
         'Nicholas Nuspl',
@@ -463,7 +660,6 @@ def main():
         'mary@oag.com'
     )
     certificate.add_recipient(recipient)
-
     document.add_content(certificate)
 
     print(str(document))
