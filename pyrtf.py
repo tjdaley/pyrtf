@@ -7,6 +7,8 @@ from collections import namedtuple
 from datetime import datetime
 import textwrap
 
+from table import Table
+
 Color = namedtuple('Color', ['red', 'green', 'blue'])
 
 
@@ -338,6 +340,62 @@ class CaseStyle(object):
         if isinstance(caseinfo.child_names, list):
             self.child_names = caseinfo.child_names
 
+    def __new_str__(self):
+        lcol = Table.Column(
+            width=4680,
+            borders='r',
+            alignment='l',
+            property=0,
+        )
+        rcol = Table.Column(
+            width=4680,
+            alignment='l',
+            property=1,
+        )
+        columns = [lcol, rcol]
+
+        left_content = ""
+        bold_caps = TextRun.Properties(bold=True, all_caps=True)
+        if self.is_divorce:
+            t = TextRun('In the Matter of\\nThe Marriage of\\n\\n', bold_caps)
+            left_content += str(t)
+            t = TextRun(self.petitioner_name, bold_caps)
+            left_content += str(t)
+            t = TextRun('\\nand\\n', bold_caps)
+            left_content += str(t)
+            t = TextRun(self.respondent_name, bold_caps)
+            left_content += str(t)
+            if self.child_names:
+                t = TextRun('\\n\\nand ', bold_caps)
+                left_content += str(t)
+
+        if self.child_names:
+            t = TextRun('In the Interest of\\n', bold_caps)
+            left_content += str(t)
+            if len(self.child_names) == 1:
+                capacity = ', a child'
+            else:
+                capacity = ', minor children'
+            t = TextRun(', '.join(self.child_names), bold_caps)
+            left_content += str(t)
+            t = TextRun(capacity, bold_caps)
+            left_content += str(t)
+
+        # Right column
+        right_content = ""
+        t = TextRun('In the %s Court\\n\\n' % self.court_type, bold_caps)
+        right_content += str(t)
+        t = TextRun('%s Court #%s\\n\\n' % (self.court_type, self.court_number), bold_caps)  # NOQA
+        right_content += str(t)
+        t = TextRun('%s County, Texas' % self.county, bold_caps)
+        right_content += str(t)
+
+        data = [[left_content, right_content]]
+
+        # Build the table
+        table = Table(columns, data)
+        return '{' + str(table) + '}\n'
+
     def __str__(self):
         parts = []
         bold_caps = TextRun.Properties(bold=True, all_caps=True)
@@ -378,53 +436,55 @@ class CaseStyle(object):
         #
         # Not every case style has every element that is in the left column
         # above.
-        begin_row = '\\trowd\\trgaph180\n'
-        column_widths = '\\cellx4680\\cellx9360\n'
-        left_cell = '{\\pard\\intbl\\brdrr\\brdrs\\brdrw10\\brsp20 %s\\cell}\n'
-        right_cell = '{\\pard\\intbl %s\\cell}\n'
-        end_row = '\\row\n'
+        # Column definitions
+        lcol = Table.Column(
+            width=4680,
+            borders='r',
+            alignment='l',
+            property=0,
+        )
+        rcol = Table.Column(
+            width=4680,
+            alignment='l',
+            property=1,
+        )
+        columns = [lcol, rcol]
 
-        left_content = ""
+        # Construct Data
+        t = ""
         if self.is_divorce:
-            t = TextRun('In the Matter of\\nThe Marriage of\\n\\n', bold_caps)
-            left_content += str(t)
-            t = TextRun(self.petitioner_name, bold_caps)
-            left_content += str(t)
-            t = TextRun('\\nand\\n', bold_caps)
-            left_content += str(t)
-            t = TextRun(self.respondent_name, bold_caps)
-            left_content += str(t)
+            t += 'In the Matter of\\nThe Marriage of\\n\\n'
+            t += self.petitioner_name
+            t += '\\nand\\n'
+            t += self.respondent_name
             if self.child_names:
-                t = TextRun('\\n\\nand ', bold_caps)
-                left_content += str(t)
+                t += '\\n\\nand '
 
         if self.child_names:
-            t = TextRun('In the Interest of\\n', bold_caps)
-            left_content += str(t)
+            t += "In the Interest of\\n"
             if len(self.child_names) == 1:
-                capacity = ', a child'
+                capacity = ", a child"
             else:
-                capacity = ', minor children'
-            t = TextRun(', '.join(self.child_names), bold_caps)
-            left_content += str(t)
-            t = TextRun(capacity, bold_caps)
-            left_content += str(t)
+                capacity = ", minor children"
+            t += ", ".join(self.child_names)
+            t += capacity
+        left_content = str(TextRun(t, bold_caps))
 
         # Right column
-        right_content = ""
-        t = TextRun('In the %s Court\\n\\n' % self.court_type, bold_caps)
-        right_content += str(t)
-        t = TextRun('%s Court #%s\\n\\n' % (self.court_type, self.court_number), bold_caps)  # NOQA
-        right_content += str(t)
-        t = TextRun('%s County, Texas' % self.county, bold_caps)
-        right_content += str(t)
+        t = 'In the %s Court\\n\\n' % self.court_type
+        t += '%s Court #%s\\n\\n' % (self.court_type, self.court_number)
+        t += '%s County, Texas' % self.county
+        right_content = str(TextRun(t, bold_caps))
+        data = [[left_content, right_content]]
 
         # Build the Table
-        case_style = [begin_row, column_widths]
-        case_style.append(left_cell % left_content)
-        case_style.append(right_cell % right_content)
-        case_style.append(end_row)
-        parts.append(''.join(case_style))
+        table = Table(columns, data)
+        parts.append(str(table))
+        # case_style = [begin_row, column_widths]
+        # case_style.append(left_cell % left_content)
+        # case_style.append(right_cell % right_content)
+        # case_style.append(end_row)
+        # parts.append(''.join(case_style))
 
         # Document Title
         p = Paragraph(alignment=Paragraph.ALIGN_CENTER)
@@ -609,7 +669,7 @@ def main():
         '469',
         'John Doe',
         'Jane Doe',
-        False,
+        True,
         ['Johnny Doe', 'Julie Joe'],
         False,
         doc_title
@@ -627,11 +687,11 @@ def main():
     bold_small = TextRun.Properties(bold=True, small_caps=True)
     italics = TextRun.Properties(italic=True)
     p = Paragraph(alignment=Paragraph.ALIGN_JUSTIFY)
-    t = TextRun('Ava Paxton Daley 'bold_small)
+    t = TextRun('Ava Paxton Daley', bold_small)
     p.add_text(t)
     t = TextRun('provides the _accompanying_ __responses__ to Petitioner\'s ')
     p.add_text(t)
-    t = TextRun('[[Requests for Production and Inspection]] ', italic)
+    t = TextRun('[[Requests for Production and Inspection]] ', italics)
     p.add_text(t)
     t = TextRun('propounded by Petitioner on November 1, 2019.')
     p.add_text(t)
