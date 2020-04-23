@@ -20,3 +20,7 @@ I don't want to lose these links, although they were applicable mostly to the di
 * [W. Mark Cotham's Powerful Argument on Discovery](http://www.thehoustonlawyer.com/aa_jan06/page22.htm)
 
 If you care at all about doing discovery right, you should download and print these articles just in case their host sites disappear.
+
+## Author
+
+Thomas J. Daley, J.D. is an active family law litigation attorney practicing primarily in Collin County, Texas, a family law mediator, and software developer. My family law practice is limited to divorce, child custody, child support, enforcment, and modification suits. [Web Site](https://koonsfuller.com/attorneys/tom-daley/)
